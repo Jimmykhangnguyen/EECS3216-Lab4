@@ -10,7 +10,7 @@ module Lab4 (
     output [7:0]  HEX4,
     output [7:0]  HEX5
 );
-
+ 
     //------------------------------------------------------------------
     // Parameters (change CLK_HZ / divide for simulation if desired)
     //------------------------------------------------------------------
@@ -20,10 +20,10 @@ module Lab4 (
     parameter TENTH_SEC   = CLK_HZ / 10;        // 0.1 s
     parameter ERR_HALF    = CLK_HZ / 5;         // 0.2 s per error-blink half period
     parameter DEBOUNCE    = CLK_HZ / 50;        // 20 ms lock-out after a press
-
+ 
     wire clk   = MAX10_CLK1_50;
     wire rst_n = KEY[0];                         // asynchronous, active low
-
+ 
     //------------------------------------------------------------------
     // 7-segment codes (active low, bit7 = dp, {dp,g,f,e,d,c,b,a})
     //------------------------------------------------------------------
@@ -35,7 +35,7 @@ module Lab4 (
     localparam SEG_L     = 8'hC7;
     localparam SEG_E     = 8'h86;
     localparam SEG_R     = 8'hAF;
-
+ 
     function [7:0] seg_digit;
         input [3:0] d;
         begin
@@ -54,14 +54,14 @@ module Lab4 (
             endcase
         end
     endfunction
-
+ 
     //------------------------------------------------------------------
     // KEY1 : synchronizer + falling-edge detect + debounce lock-out
     //------------------------------------------------------------------
     reg [2:0]  key_sync;
     reg [24:0] lock_cnt;
     reg        coin_pulse;
-
+ 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             key_sync   <= 3'b111;
@@ -78,13 +78,13 @@ module Lab4 (
             end
         end
     end
-
+ 
     //------------------------------------------------------------------
     // Free-running blink generators (0.5 s and 0.1 s on/off)
     //------------------------------------------------------------------
     reg [25:0] half_cnt, tenth_cnt;
     reg        blink_half, blink_tenth;
-
+ 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             half_cnt <= 0;  blink_half  <= 1'b0;
@@ -93,13 +93,13 @@ module Lab4 (
             if (half_cnt == HALF_SEC-1) begin
                 half_cnt <= 0; blink_half <= ~blink_half;
             end else half_cnt <= half_cnt + 1'b1;
-
+ 
             if (tenth_cnt == TENTH_SEC-1) begin
                 tenth_cnt <= 0; blink_tenth <= ~blink_tenth;
             end else tenth_cnt <= tenth_cnt + 1'b1;
         end
     end
-
+ 
     //------------------------------------------------------------------
     // Inputs decoding
     //------------------------------------------------------------------
@@ -108,20 +108,20 @@ module Lab4 (
     wire       sel_valid = (sel != 2'b00);
     wire [1:0] sel_idx   = sel - 2'd1;                 // 0,1,2 for sel = 1,2,3
     wire       sel_occ   = sel_valid && occ[sel_idx];
-
+ 
     //------------------------------------------------------------------
     // Per-space timers
     //------------------------------------------------------------------
     reg [6:0]  tm      [0:2];     // remaining time 0..99
     reg [25:0] sec_cnt [0:2];     // 1-second prescaler per space
     reg [2:0]  expired;           // timer ran out and no coin since
-
+ 
     // Error ("selected but unoccupied") state
     reg        err_active;
     reg [2:0]  err_phase;         // 0..5 : on,off,on,off,on,off
     reg [24:0] err_tick;
     reg [1:0]  err_space;
-
+ 
     integer i;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -152,7 +152,7 @@ module Lab4 (
                         if (tm[i] == 7'd1) expired[i] <= 1'b1;
                     end else
                         sec_cnt[i] <= sec_cnt[i] + 26'd1;
-
+ 
                     // coin deposit (overrides the decrement above in the same cycle)
                     if (coin_pulse && sel_valid && (sel_idx == i)) begin
                         tm[i]      <= (tm[i] >= 7'd89) ? 7'd99 : (tm[i] + 7'd10);
@@ -160,7 +160,7 @@ module Lab4 (
                     end
                 end
             end
-
+ 
             //---------------- error blink sequencer ----------------
             if (err_active) begin
                 if (err_tick == ERR_HALF-1) begin
@@ -170,7 +170,7 @@ module Lab4 (
                 end else
                     err_tick <= err_tick + 25'd1;
             end
-
+ 
             if (coin_pulse && sel_valid && !sel_occ && !err_active) begin
                 err_active <= 1'b1;
                 err_phase  <= 3'd0;
@@ -179,52 +179,53 @@ module Lab4 (
             end
         end
     end
-
+ 
     //------------------------------------------------------------------
     // LED logic
     //------------------------------------------------------------------
     reg [2:0] led_space;
+    integer j;
     always @(*) begin
-        for (i = 0; i < 3; i = i + 1) begin
-            if (err_active && (err_space == i))
-                led_space[i] = ~err_phase[0];               // 3 blinks
-            else if (!occ[i])
-                led_space[i] = 1'b0;                        // vacant: off
-            else if (tm[i] == 7'd0)
-                led_space[i] = expired[i] ? blink_tenth : 1'b1;   // 0.1 s blink / steady
-            else if (tm[i] <= 7'd10)
-                led_space[i] = blink_half;                  // 0.5 s blink
+        for (j = 0; j < 3; j = j + 1) begin
+            if (err_active && (err_space == j))
+                led_space[j] = ~err_phase[0];               // 3 blinks
+            else if (!occ[j])
+                led_space[j] = 1'b0;                        // vacant: off
+            else if (tm[j] == 7'd0)
+                led_space[j] = expired[j] ? blink_tenth : 1'b1;   // 0.1 s blink / steady
+            else if (tm[j] <= 7'd10)
+                led_space[j] = blink_half;                  // 0.5 s blink
             else
-                led_space[i] = 1'b1;                        // steady on
+                led_space[j] = 1'b1;                        // steady on
         end
     end
-
+ 
     assign LEDR[2:0] = led_space;
     assign LEDR[7:3] = 5'b00000;
     assign LEDR[9:8] = SW[9:8];
-
+ 
     //------------------------------------------------------------------
     // Displays
     //------------------------------------------------------------------
     // Available spaces
     reg [1:0] avail;
     always @(*) avail = 2'd3 - occ[0] - occ[1] - occ[2];
-
+ 
     assign HEX5 = (avail != 0) ? SEG_O : SEG_F;
     assign HEX4 = (avail != 0) ? SEG_P : SEG_L;
     assign HEX3 = seg_digit({2'b00, avail});
-
+ 
     // Selected space
     assign HEX2 = sel_valid ? seg_digit({2'b00, sel}) : SEG_DASH;
-
+ 
     // Timer of selected space
     wire [6:0] sel_time = sel_valid ? tm[sel_idx] : 7'd0;
     wire [3:0] tens     = sel_time / 10;
     wire [3:0] ones     = sel_time % 10;
-
+ 
     assign HEX1 = !sel_valid ? SEG_DASH :
                   err_active ? SEG_E    : seg_digit(tens);
     assign HEX0 = !sel_valid ? SEG_DASH :
                   err_active ? SEG_R    : seg_digit(ones);
-
+ 
 endmodule
